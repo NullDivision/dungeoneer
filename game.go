@@ -10,8 +10,9 @@ import (
 
 const mapChar = '.'
 const playerChar = '@'
+const castleChar = '#'
 
-type player struct {
+type entity struct {
 	x, y int
 }
 
@@ -39,27 +40,43 @@ func exit(screen tcell.Screen) {
 	os.Exit(0)
 }
 
-func render(mapMatrix [][]int, player player, screen tcell.Screen) {
+type game struct {
+	enemyCastle  entity
+	player       *entity
+	playerCastle entity
+	mapMatrix    [][]int
+}
+
+func render(game game, screen tcell.Screen) {
 	// Render map
-	for i := range mapMatrix {
-		for j := range mapMatrix[i] {
-			if i == player.y && j == player.x {
-				screen.SetContent(j, i, playerChar, nil, tcell.StyleDefault)
-				continue
+	for i := range game.mapMatrix {
+		for j := range game.mapMatrix[i] {
+			entityChar := mapChar
+
+			if i == game.enemyCastle.y && j == game.enemyCastle.x {
+				entityChar = castleChar
+			} else if i == game.playerCastle.y && j == game.playerCastle.x {
+				entityChar = castleChar
+			} else if i == game.player.y && j == game.player.x {
+				entityChar = playerChar
 			}
 
-			screen.SetContent(j, i, mapChar, nil, tcell.StyleDefault)
+			screen.SetContent(j, i, entityChar, nil, tcell.StyleDefault)
 		}
 	}
 	screen.Sync()
 }
 
-func run(keyChannel chan tcell.Key, screen tcell.Screen, player player) {
+func run(keyChannel chan tcell.Key, screen tcell.Screen) {
 	width, height := getWindowSize(screen)
+	player := entity{}
+	playerCastle := entity{}
+	enemyCastle := entity{width - 1, height - 1}
 	mapMatrix := make([][]int, height)
 	for i := range mapMatrix {
 		mapMatrix[i] = make([]int, width)
 	}
+	game := game{enemyCastle, &player, playerCastle, mapMatrix}
 	// Create a ticker to update the game
 	ticker := time.NewTicker(time.Second)
 
@@ -78,9 +95,9 @@ func run(keyChannel chan tcell.Key, screen tcell.Screen, player player) {
 			case tcell.KeyRight:
 				player.x++
 			}
-			render(mapMatrix, player, screen)
+			render(game, screen)
 		case <-ticker.C:
-			render(mapMatrix, player, screen)
+			render(game, screen)
 		}
 	}
 }
@@ -104,13 +121,10 @@ func main() {
 		mapMatrix[i] = make([]int, width)
 	}
 
-	// Init player
-	player := player{0, 0}
-
 	// Create a channel to listen for events
 	keyChannel := make(chan tcell.Key)
 
-	go run(keyChannel, screen, player)
+	go run(keyChannel, screen)
 
 	for {
 		ev := screen.PollEvent()
