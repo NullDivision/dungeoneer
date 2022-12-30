@@ -11,6 +11,7 @@ import (
 const mapChar = '.'
 const playerChar = '@'
 const castleChar = '#'
+const unitChar = 'U'
 
 type entity struct {
 	x, y int
@@ -42,12 +43,36 @@ func exit(screen tcell.Screen) {
 
 type game struct {
 	enemyCastle  entity
+	enemyUnits   []*entity
 	player       *entity
 	playerCastle entity
+	playerUnits  []*entity
 	mapMatrix    [][]int
 }
 
-func render(game game, screen tcell.Screen) {
+func update(game game, screen tcell.Screen) {
+	// Check collisions
+	if game.player.x == game.enemyCastle.x && game.player.y == game.enemyCastle.y {
+		exit(screen)
+	}
+
+	// Move units
+	for i := range game.enemyUnits {
+		if game.enemyUnits[i].x > game.enemyUnits[i].y {
+			game.enemyUnits[i].x--
+		} else {
+			game.enemyUnits[i].y--
+		}
+	}
+
+	for i := range game.playerUnits {
+		if game.playerUnits[i].x < game.playerUnits[i].y {
+			game.playerUnits[i].x++
+		} else {
+			game.playerUnits[i].y++
+		}
+	}
+
 	// Render map
 	for i := range game.mapMatrix {
 		for j := range game.mapMatrix[i] {
@@ -59,12 +84,28 @@ func render(game game, screen tcell.Screen) {
 				entityChar = castleChar
 			} else if i == game.player.y && j == game.player.x {
 				entityChar = playerChar
+			} else {
+				for k := range game.enemyUnits {
+					if i == game.enemyUnits[k].y && j == game.enemyUnits[k].x {
+						entityChar = unitChar
+					}
+				}
+				for k := range game.playerUnits {
+					if i == game.playerUnits[k].y && j == game.playerUnits[k].x {
+						entityChar = unitChar
+					}
+				}
 			}
 
 			screen.SetContent(j, i, entityChar, nil, tcell.StyleDefault)
 		}
 	}
 	screen.Sync()
+}
+
+func spawnUnits(game *game) {
+	game.enemyUnits = append(game.enemyUnits, &entity{game.enemyCastle.x, game.enemyCastle.y})
+	game.playerUnits = append(game.playerUnits, &entity{game.playerCastle.x, game.playerCastle.y})
 }
 
 func run(keyChannel chan tcell.Key, screen tcell.Screen) {
@@ -76,7 +117,14 @@ func run(keyChannel chan tcell.Key, screen tcell.Screen) {
 	for i := range mapMatrix {
 		mapMatrix[i] = make([]int, width)
 	}
-	game := game{enemyCastle, &player, playerCastle, mapMatrix}
+	game := game{
+		enemyCastle:  enemyCastle,
+		enemyUnits:   make([]*entity, 0),
+		player:       &player,
+		playerCastle: playerCastle,
+		playerUnits:  make([]*entity, 0),
+		mapMatrix:    mapMatrix,
+	}
 	// Create a ticker to update the game
 	ticker := time.NewTicker(time.Second)
 
@@ -95,9 +143,13 @@ func run(keyChannel chan tcell.Key, screen tcell.Screen) {
 			case tcell.KeyRight:
 				player.x++
 			}
-			render(game, screen)
-		case <-ticker.C:
-			render(game, screen)
+			update(game, screen)
+		case tick := <-ticker.C:
+			if tick.Second()%5 == 0 {
+				spawnUnits(&game)
+			}
+
+			update(game, screen)
 		}
 	}
 }
