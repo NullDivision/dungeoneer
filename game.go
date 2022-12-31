@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"time"
 
@@ -83,10 +84,10 @@ func renderMap(game game, screen tcell.Screen) {
 	screen.Sync()
 }
 
-func moveNpcs(game game) {
+func moveNpcs(game *game) {
 	// Move units
 	for i := range game.enemyUnits {
-		if game.enemyUnits[i].x > game.enemyUnits[i].y {
+		if game.enemyUnits[i].x >= game.enemyUnits[i].y {
 			game.enemyUnits[i].x--
 		} else {
 			game.enemyUnits[i].y--
@@ -94,7 +95,7 @@ func moveNpcs(game game) {
 	}
 
 	for i := range game.playerUnits {
-		if game.playerUnits[i].x < game.playerUnits[i].y {
+		if game.playerUnits[i].x <= game.playerUnits[i].y || game.playerUnits[i].y == game.enemyCastle.y {
 			game.playerUnits[i].x++
 		} else {
 			game.playerUnits[i].y++
@@ -124,18 +125,38 @@ func isEndState(game game) bool {
 	return false
 }
 
-func update(game game, screen tcell.Screen, isTick bool) {
+func update(game *game, screen tcell.Screen, isTick bool) {
 	if isTick {
 		moveNpcs(game)
 	}
 
 	// Check collisions
-	if isEndState(game) {
+	if isEndState(*game) {
 		exit(screen)
 	}
 
+	log.Println("Player units:", len(game.playerUnits))
+	log.Println("Enemy units:", len(game.enemyUnits))
+
+	// Eliminate unit if it's on the same tile as the player
+	for i := range game.enemyUnits {
+		if game.enemyUnits[i].x == game.player.x && game.enemyUnits[i].y == game.player.y {
+			game.enemyUnits = append(game.enemyUnits[:i], game.enemyUnits[i+1:]...)
+		}
+	}
+
+	// Eliminate both units if they're on the same tile
+	for i := len(game.playerUnits) - 1; i >= 0; i-- {
+		for j := len(game.enemyUnits) - 1; j >= 0; j-- {
+			if game.playerUnits[i].x == game.enemyUnits[j].x && game.playerUnits[i].y == game.enemyUnits[j].y {
+				game.playerUnits = append(game.playerUnits[:i], game.playerUnits[i+1:]...)
+				game.enemyUnits = append(game.enemyUnits[:j], game.enemyUnits[j+1:]...)
+			}
+		}
+	}
+
 	// Render map
-	renderMap(game, screen)
+	renderMap(*game, screen)
 }
 
 func spawnUnits(game *game) {
@@ -187,18 +208,20 @@ func run(keyChannel chan playerKey, screen tcell.Screen) {
 			}
 
 			if !game.paused {
-				update(game, screen, false)
+				update(&game, screen, false)
 			}
 		case tick := <-ticker.C:
 			if game.paused {
 				continue
 			}
 
+			log.Println("Tick", tick)
+
 			if tick.Second()%5 == 0 {
 				spawnUnits(&game)
 			}
 
-			update(game, screen, true)
+			update(&game, screen, true)
 		}
 	}
 }
@@ -248,6 +271,16 @@ func main() {
 
 	// Create a channel to listen for events
 	keyChannel := make(chan playerKey)
+	file, err := os.Create("debug.log")
+	if err != nil {
+		panic(err)
+	}
+
+	defer file.Close()
+
+	log.SetOutput(file)
+
+	log.Println("Starting game")
 
 	go run(keyChannel, screen)
 	handleKeyboardEvents(screen, keyChannel)
