@@ -103,7 +103,25 @@ func moveNpcs(game game) {
 }
 
 func isEndState(game game) bool {
-	return game.player.x == game.enemyCastle.x && game.player.y == game.enemyCastle.y
+	if game.player.x == game.enemyCastle.x && game.player.y == game.enemyCastle.y {
+		return true
+	}
+
+	// Check if any of the player units are on the enemy castle
+	for i := range game.playerUnits {
+		if game.playerUnits[i].x == game.enemyCastle.x && game.playerUnits[i].y == game.enemyCastle.y {
+			return true
+		}
+	}
+
+	// Check if any of the enemy units are on the player castle
+	for i := range game.enemyUnits {
+		if game.enemyUnits[i].x == game.playerCastle.x && game.enemyUnits[i].y == game.playerCastle.y {
+			return true
+		}
+	}
+
+	return false
 }
 
 func update(game game, screen tcell.Screen, isTick bool) {
