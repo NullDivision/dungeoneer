@@ -1,39 +1,34 @@
 package main
 
 import (
+	"fmt"
 	"os"
-	"strconv"
 	"time"
 
 	"github.com/gdamore/tcell/v2"
 )
 
-const mapChar = '.'
-const playerChar = '@'
-const castleChar = '#'
-const unitChar = 'U'
+const (
+	mapChar    = '.'
+	playerChar = '@'
+	castleChar = '#'
+	unitChar   = 'U'
+)
+const headerHeight = 1
+
+type playerKey uint8
+
+const (
+	KeyUp playerKey = iota
+	KeyDown
+	KeyLeft
+	KeyRight
+	KeyEscape
+	KeyPause
+)
 
 type entity struct {
 	x, y int
-}
-
-// Get the terminal with defaults coming from the environment.
-// Env values are "WINDOW_WIDTH", "WINDOW_HEIGHT"
-func getWindowSize(screen tcell.Screen) (int, int) {
-	width, height := screen.Size()
-	envWidth, err := strconv.Atoi(os.Getenv("WINDOW_WIDTH"))
-
-	if err != nil {
-		envWidth = width
-	}
-
-	envHeight, err := strconv.Atoi(os.Getenv("WINDOW_HEIGHT"))
-
-	if err != nil {
-		envHeight = height
-	}
-
-	return envWidth, envHeight
 }
 
 func exit(screen tcell.Screen) {
@@ -44,33 +39,18 @@ func exit(screen tcell.Screen) {
 type game struct {
 	enemyCastle  entity
 	enemyUnits   []*entity
+	paused       bool
 	player       *entity
 	playerCastle entity
 	playerUnits  []*entity
 	mapMatrix    [][]int
 }
 
-func update(game game, screen tcell.Screen) {
-	// Check collisions
-	if game.player.x == game.enemyCastle.x && game.player.y == game.enemyCastle.y {
-		exit(screen)
-	}
+func renderMap(game game, screen tcell.Screen) {
+	header := fmt.Sprintf("P:%d E:%d", len(game.playerUnits), len(game.enemyUnits))
 
-	// Move units
-	for i := range game.enemyUnits {
-		if game.enemyUnits[i].x > game.enemyUnits[i].y {
-			game.enemyUnits[i].x--
-		} else {
-			game.enemyUnits[i].y--
-		}
-	}
-
-	for i := range game.playerUnits {
-		if game.playerUnits[i].x < game.playerUnits[i].y {
-			game.playerUnits[i].x++
-		} else {
-			game.playerUnits[i].y++
-		}
+	for i := range header {
+		screen.SetContent(i, 0, rune(header[i]), nil, tcell.StyleDefault)
 	}
 
 	// Render map
@@ -97,10 +77,47 @@ func update(game game, screen tcell.Screen) {
 				}
 			}
 
-			screen.SetContent(j, i, entityChar, nil, tcell.StyleDefault)
+			screen.SetContent(j, i+1, entityChar, nil, tcell.StyleDefault)
 		}
 	}
 	screen.Sync()
+}
+
+func moveNpcs(game game) {
+	// Move units
+	for i := range game.enemyUnits {
+		if game.enemyUnits[i].x > game.enemyUnits[i].y {
+			game.enemyUnits[i].x--
+		} else {
+			game.enemyUnits[i].y--
+		}
+	}
+
+	for i := range game.playerUnits {
+		if game.playerUnits[i].x < game.playerUnits[i].y {
+			game.playerUnits[i].x++
+		} else {
+			game.playerUnits[i].y++
+		}
+	}
+}
+
+func isEndState(game game) bool {
+	return game.player.x == game.enemyCastle.x && game.player.y == game.enemyCastle.y
+}
+
+func update(game game, screen tcell.Screen, isTick bool) {
+	if isTick {
+		moveNpcs(game)
+	}
+
+	// Check collisions
+	if isEndState(game) {
+		exit(screen)
+	}
+
+	// Render map
+	renderMap(game, screen)
 }
 
 func spawnUnits(game *game) {
@@ -108,12 +125,12 @@ func spawnUnits(game *game) {
 	game.playerUnits = append(game.playerUnits, &entity{game.playerCastle.x, game.playerCastle.y})
 }
 
-func run(keyChannel chan tcell.Key, screen tcell.Screen) {
+func run(keyChannel chan playerKey, screen tcell.Screen) {
 	width, height := getWindowSize(screen)
 	player := entity{}
 	playerCastle := entity{}
-	enemyCastle := entity{width - 1, height - 1}
-	mapMatrix := make([][]int, height)
+	enemyCastle := entity{width - 1, height - headerHeight - 1}
+	mapMatrix := make([][]int, height-headerHeight)
 	for i := range mapMatrix {
 		mapMatrix[i] = make([]int, width)
 	}
@@ -129,38 +146,76 @@ func run(keyChannel chan tcell.Key, screen tcell.Screen) {
 	ticker := time.NewTicker(time.Second)
 
 	for {
+		// TODO: abstract this away somehow
 		select {
 		case ev := <-keyChannel:
 			switch ev {
-			case tcell.KeyEscape:
+			case KeyEscape:
 				exit(screen)
-			case tcell.KeyUp:
+			case KeyUp:
 				player.y--
-			case tcell.KeyDown:
+			case KeyDown:
 				player.y++
-			case tcell.KeyLeft:
+			case KeyLeft:
 				player.x--
-			case tcell.KeyRight:
+			case KeyRight:
 				player.x++
+			case KeyPause:
+				showMessage(screen, "Game paused")
+				game.paused = true
+			default:
+				showMessage(screen, "Unknown key"+string(ev))
+				game.paused = true
 			}
-			update(game, screen)
+
+			if !game.paused {
+				update(game, screen, false)
+			}
 		case tick := <-ticker.C:
+			if game.paused {
+				continue
+			}
+
 			if tick.Second()%5 == 0 {
 				spawnUnits(&game)
 			}
 
-			update(game, screen)
+			update(game, screen, true)
+		}
+	}
+}
+
+func handleKeyboardEvents(screen tcell.Screen, keyChannel chan playerKey) {
+	for {
+		ev := screen.PollEvent()
+		switch ev := ev.(type) {
+		case *tcell.EventKey:
+			switch ev.Key() {
+			case tcell.KeyEscape:
+				keyChannel <- KeyEscape
+			case tcell.KeyUp:
+				keyChannel <- KeyUp
+			case tcell.KeyDown:
+				keyChannel <- KeyDown
+			case tcell.KeyLeft:
+				keyChannel <- KeyLeft
+			case tcell.KeyRight:
+				keyChannel <- KeyRight
+			case tcell.KeyRune:
+				switch ev.Rune() {
+				case 'q':
+					keyChannel <- KeyEscape
+				case 'p':
+					keyChannel <- KeyPause
+				}
+			}
 		}
 	}
 }
 
 func main() {
-	screen, err := tcell.NewScreen()
+	screen, err := makeScreen()
 	if err != nil {
-		panic(err)
-	}
-
-	if err := screen.Init(); err != nil {
 		panic(err)
 	}
 
@@ -174,15 +229,8 @@ func main() {
 	}
 
 	// Create a channel to listen for events
-	keyChannel := make(chan tcell.Key)
+	keyChannel := make(chan playerKey)
 
 	go run(keyChannel, screen)
-
-	for {
-		ev := screen.PollEvent()
-		switch ev := ev.(type) {
-		case *tcell.EventKey:
-			keyChannel <- ev.Key()
-		}
-	}
+	handleKeyboardEvents(screen, keyChannel)
 }
