@@ -34,11 +34,11 @@ func exit(screen tcell.Screen) {
 }
 
 type game struct {
-	enemyCastle  entity
+	enemyCastle  location
 	enemyUnits   []*entity
 	paused       bool
 	player       *entity
-	playerCastle entity
+	playerCastle location
 	playerUnits  []*entity
 	mapMatrix    [][]int
 }
@@ -135,8 +135,8 @@ func update(game *game, screen tcell.Screen, isTick bool) {
 	log.Println("Enemy units:", len(game.enemyUnits))
 
 	// Eliminate unit if it's on the same tile as the player
-	for i := range game.enemyUnits {
-		if game.enemyUnits[i].isOverlapping(*game.player) {
+	for i := len(game.enemyUnits) - 1; i >= 0; i-- {
+		if game.enemyUnits[i].isOverlapping(game.player.location) {
 			game.enemyUnits = append(game.enemyUnits[:i], game.enemyUnits[i+1:]...)
 		}
 	}
@@ -144,7 +144,7 @@ func update(game *game, screen tcell.Screen, isTick bool) {
 	// Eliminate both units if they're on the same tile
 	for i := len(game.playerUnits) - 1; i >= 0; i-- {
 		for j := len(game.enemyUnits) - 1; j >= 0; j-- {
-			if game.playerUnits[i].isOverlapping(*game.enemyUnits[j]) {
+			if game.playerUnits[i].isOverlapping(game.enemyUnits[j].location) {
 				game.playerUnits = append(game.playerUnits[:i], game.playerUnits[i+1:]...)
 				game.enemyUnits = append(game.enemyUnits[:j], game.enemyUnits[j+1:]...)
 			}
@@ -156,15 +156,21 @@ func update(game *game, screen tcell.Screen, isTick bool) {
 }
 
 func spawnUnits(game *game) {
-	game.enemyUnits = append(game.enemyUnits, &entity{game.enemyCastle.x, game.enemyCastle.y})
-	game.playerUnits = append(game.playerUnits, &entity{game.playerCastle.x, game.playerCastle.y})
+	game.enemyUnits = append(
+		game.enemyUnits,
+		&entity{location: game.enemyCastle},
+	)
+	game.playerUnits = append(
+		game.playerUnits,
+		&entity{location: game.playerCastle},
+	)
 }
 
 func run(keyChannel chan playerKey, screen tcell.Screen) {
 	width, height := getWindowSize(screen)
 	player := entity{}
-	playerCastle := entity{}
-	enemyCastle := entity{width - 1, height - headerHeight - 1}
+	playerCastle := location{}
+	enemyCastle := location{width - 1, height - headerHeight - 1}
 	mapMatrix := make([][]int, height-headerHeight)
 	for i := range mapMatrix {
 		mapMatrix[i] = make([]int, width)
