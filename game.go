@@ -28,10 +28,6 @@ const (
 	KeyPause
 )
 
-type entity struct {
-	x, y int
-}
-
 func exit(screen tcell.Screen) {
 	screen.Fini()
 	os.Exit(0)
@@ -104,20 +100,20 @@ func moveNpcs(game *game) {
 }
 
 func isEndState(game game) bool {
-	if game.player.x == game.enemyCastle.x && game.player.y == game.enemyCastle.y {
+	if game.player.isOverlapping(game.enemyCastle) {
 		return true
 	}
 
 	// Check if any of the player units are on the enemy castle
 	for i := range game.playerUnits {
-		if game.playerUnits[i].x == game.enemyCastle.x && game.playerUnits[i].y == game.enemyCastle.y {
+		if game.playerUnits[i].isOverlapping(game.enemyCastle) {
 			return true
 		}
 	}
 
 	// Check if any of the enemy units are on the player castle
 	for i := range game.enemyUnits {
-		if game.enemyUnits[i].x == game.playerCastle.x && game.enemyUnits[i].y == game.playerCastle.y {
+		if game.enemyUnits[i].isOverlapping(game.playerCastle) {
 			return true
 		}
 	}
@@ -140,7 +136,7 @@ func update(game *game, screen tcell.Screen, isTick bool) {
 
 	// Eliminate unit if it's on the same tile as the player
 	for i := range game.enemyUnits {
-		if game.enemyUnits[i].x == game.player.x && game.enemyUnits[i].y == game.player.y {
+		if game.enemyUnits[i].isOverlapping(*game.player) {
 			game.enemyUnits = append(game.enemyUnits[:i], game.enemyUnits[i+1:]...)
 		}
 	}
@@ -148,7 +144,7 @@ func update(game *game, screen tcell.Screen, isTick bool) {
 	// Eliminate both units if they're on the same tile
 	for i := len(game.playerUnits) - 1; i >= 0; i-- {
 		for j := len(game.enemyUnits) - 1; j >= 0; j-- {
-			if game.playerUnits[i].x == game.enemyUnits[j].x && game.playerUnits[i].y == game.enemyUnits[j].y {
+			if game.playerUnits[i].isOverlapping(*game.enemyUnits[j]) {
 				game.playerUnits = append(game.playerUnits[:i], game.playerUnits[i+1:]...)
 				game.enemyUnits = append(game.enemyUnits[:j], game.enemyUnits[j+1:]...)
 			}
