@@ -34,11 +34,11 @@ func exit(screen tcell.Screen) {
 }
 
 type game struct {
-	enemyCastle  location
+	enemyCastle  entity
 	enemyUnits   []*entity
 	paused       bool
 	player       *entity
-	playerCastle location
+	playerCastle entity
 	playerUnits  []*entity
 	mapMatrix    [][]int
 }
@@ -80,9 +80,36 @@ func renderMap(game game, screen tcell.Screen) {
 	screen.Sync()
 }
 
-func moveNpcs(game *game) {
+func processEntities(game *game) {
+	// player castle needs to check if there are any units to target
+	if game.playerCastle.target == nil {
+		game.playerCastle.target = game.playerCastle.findTarget(game.enemyUnits)
+	}
+	// enemy castle needs to check if there are any units to target
+	if game.enemyCastle.target == nil {
+		game.enemyCastle.target = game.enemyCastle.findTarget(game.playerUnits)
+	}
+
+	// Check if any of the player units are next to enemy units
+	for i := range game.playerUnits {
+		if game.playerUnits[i].target == nil {
+			game.playerUnits[i].target = game.playerUnits[i].findTarget(game.enemyUnits)
+		}
+	}
+	// Check if any of the player units are next to enemy units
+	for i := range game.enemyUnits {
+		if game.enemyUnits[i].target == nil {
+			game.enemyUnits[i].target = game.enemyUnits[i].findTarget(game.playerUnits)
+		}
+	}
+
 	// Move units
 	for i := range game.enemyUnits {
+		log.Println("Enemy unit:", i, "target:", game.enemyUnits[i].target)
+		if game.enemyUnits[i].target != nil {
+			continue
+		}
+
 		if game.enemyUnits[i].x >= game.enemyUnits[i].y {
 			game.enemyUnits[i].x--
 		} else {
@@ -91,31 +118,62 @@ func moveNpcs(game *game) {
 	}
 
 	for i := range game.playerUnits {
+		if game.playerUnits[i].target != nil {
+			continue
+		}
+
 		if game.playerUnits[i].x <= game.playerUnits[i].y || game.playerUnits[i].y == game.enemyCastle.y {
 			game.playerUnits[i].x++
 		} else {
 			game.playerUnits[i].y++
 		}
 	}
+
+	log.Println("Player units:", len(game.playerUnits))
+	log.Println("Enemy units:", len(game.enemyUnits))
+
+	// Hit target
+	for i := range game.enemyUnits {
+		if game.enemyUnits[i].target != nil {
+			game.enemyUnits[i].target.health -= 1
+			if game.enemyUnits[i].target.health <= 0 {
+				game.enemyUnits[i].target = nil
+			}
+		}
+	}
+
+	// Hit target
+	for i := range game.playerUnits {
+		if game.playerUnits[i].target != nil {
+			game.playerUnits[i].target.health -= 1
+			if game.playerUnits[i].target.health <= 0 {
+				game.playerUnits[i].target = nil
+			}
+		}
+	}
+
+	// Check if any of the player units are dead
+	for i := len(game.playerUnits) - 1; i >= 0; i-- {
+		if game.playerUnits[i].health <= 0 {
+			game.playerUnits = append(game.playerUnits[:i], game.playerUnits[i+1:]...)
+		}
+	}
+
+	// Check if any of the enemy units are dead
+	for i := len(game.enemyUnits) - 1; i >= 0; i-- {
+		if game.enemyUnits[i].health <= 0 {
+			game.enemyUnits = append(game.enemyUnits[:i], game.enemyUnits[i+1:]...)
+		}
+	}
 }
 
 func isEndState(game game) bool {
-	if game.player.isOverlapping(game.enemyCastle) {
+	if game.playerCastle.health <= 0 {
 		return true
 	}
 
-	// Check if any of the player units are on the enemy castle
-	for i := range game.playerUnits {
-		if game.playerUnits[i].isOverlapping(game.enemyCastle) {
-			return true
-		}
-	}
-
-	// Check if any of the enemy units are on the player castle
-	for i := range game.enemyUnits {
-		if game.enemyUnits[i].isOverlapping(game.playerCastle) {
-			return true
-		}
+	if game.enemyCastle.health <= 0 {
+		return true
 	}
 
 	return false
@@ -123,32 +181,12 @@ func isEndState(game game) bool {
 
 func update(game *game, screen tcell.Screen, isTick bool) {
 	if isTick {
-		moveNpcs(game)
+		processEntities(game)
 	}
 
 	// Check collisions
 	if isEndState(*game) {
 		exit(screen)
-	}
-
-	log.Println("Player units:", len(game.playerUnits))
-	log.Println("Enemy units:", len(game.enemyUnits))
-
-	// Eliminate unit if it's on the same tile as the player
-	for i := len(game.enemyUnits) - 1; i >= 0; i-- {
-		if game.enemyUnits[i].isOverlapping(game.player.location) {
-			game.enemyUnits = append(game.enemyUnits[:i], game.enemyUnits[i+1:]...)
-		}
-	}
-
-	// Eliminate both units if they're on the same tile
-	for i := len(game.playerUnits) - 1; i >= 0; i-- {
-		for j := len(game.enemyUnits) - 1; j >= 0; j-- {
-			if game.playerUnits[i].isOverlapping(game.enemyUnits[j].location) {
-				game.playerUnits = append(game.playerUnits[:i], game.playerUnits[i+1:]...)
-				game.enemyUnits = append(game.enemyUnits[:j], game.enemyUnits[j+1:]...)
-			}
-		}
 	}
 
 	// Render map
@@ -158,19 +196,23 @@ func update(game *game, screen tcell.Screen, isTick bool) {
 func spawnUnits(game *game) {
 	game.enemyUnits = append(
 		game.enemyUnits,
-		&entity{location: game.enemyCastle},
+		&entity{health: 1, location: game.enemyCastle.location, maxHealth: 1},
 	)
 	game.playerUnits = append(
 		game.playerUnits,
-		&entity{location: game.playerCastle},
+		&entity{health: 1, location: game.playerCastle.location, maxHealth: 1},
 	)
 }
 
 func run(keyChannel chan playerKey, screen tcell.Screen) {
 	width, height := getWindowSize(screen)
 	player := entity{}
-	playerCastle := location{}
-	enemyCastle := location{width - 1, height - headerHeight - 1}
+	playerCastle := entity{health: 1, maxHealth: 1}
+	enemyCastle := entity{
+		health:    1,
+		maxHealth: 1,
+		location:  location{width - 1, height - headerHeight - 1},
+	}
 	mapMatrix := make([][]int, height-headerHeight)
 	for i := range mapMatrix {
 		mapMatrix[i] = make([]int, width)
