@@ -34,7 +34,13 @@ func exit(screen tcell.Screen) {
 }
 
 func renderMap(game game, screen tcell.Screen) {
-	header := fmt.Sprintf("P:%d E:%d", len(game.playerUnits), len(game.enemyUnits))
+	header := fmt.Sprintf(
+		"P:%d E:%d P$: %d E$: %d",
+		len(game.playerUnits),
+		len(game.enemyUnits),
+		game.playerMoney,
+		game.enemyMoney,
+	)
 
 	for i := range header {
 		screen.SetContent(i, 0, rune(header[i]), nil, tcell.StyleDefault)
@@ -71,6 +77,7 @@ func renderMap(game game, screen tcell.Screen) {
 }
 
 func processEntities(game *game) {
+	// Targeting
 	// player castle needs to check if there are any units to target
 	if game.playerCastle.target == nil {
 		game.playerCastle.target = game.playerCastle.findTarget(game.enemyUnits)
@@ -80,7 +87,6 @@ func processEntities(game *game) {
 		// Include the player in targeting
 		game.enemyCastle.target = game.enemyCastle.findTarget(append(game.playerUnits, game.player))
 	}
-
 	// Check if any of the player units are next to enemy units
 	for i := range game.playerUnits {
 		if game.playerUnits[i].target == nil {
@@ -93,6 +99,10 @@ func processEntities(game *game) {
 			// Include the player in targeting
 			game.enemyUnits[i].target = game.enemyUnits[i].findTarget(append(game.playerUnits, game.player))
 		}
+	}
+	// If player has a target, check if it's still next to them and if so, hit it
+	if game.player.target == nil || !game.player.isNearby(game.player.target) {
+		game.player.target = game.player.findTarget(append(game.enemyUnits, &game.enemyCastle))
 	}
 
 	// Move units
@@ -108,7 +118,6 @@ func processEntities(game *game) {
 			game.enemyUnits[i].y--
 		}
 	}
-
 	for i := range game.playerUnits {
 		if game.playerUnits[i].target != nil {
 			continue
@@ -144,10 +153,6 @@ func processEntities(game *game) {
 		}
 	}
 
-	// If player has a target, check if it's still next to them and if so, hit it
-	if game.player.target == nil || !game.player.isNearby(game.player.target) {
-		game.player.target = game.player.findTarget(append(game.enemyUnits, &game.enemyCastle))
-	}
 	if game.player.target != nil {
 		game.player.target.health -= 1
 	}
@@ -155,6 +160,7 @@ func processEntities(game *game) {
 	// Check if any of the player units are dead
 	for i := len(game.playerUnits) - 1; i >= 0; i-- {
 		if game.playerUnits[i].health <= 0 {
+			game.enemyMoney++
 			game.playerUnits = append(game.playerUnits[:i], game.playerUnits[i+1:]...)
 		}
 	}
@@ -162,27 +168,17 @@ func processEntities(game *game) {
 	// Check if any of the enemy units are dead
 	for i := len(game.enemyUnits) - 1; i >= 0; i-- {
 		if game.enemyUnits[i].health <= 0 {
+			game.playerMoney++
 			game.enemyUnits = append(game.enemyUnits[:i], game.enemyUnits[i+1:]...)
 		}
 	}
 
 	// If player dies, move them back to the castle and reset their health
 	if game.player.health <= 0 {
+		game.enemyMoney += 5
 		game.player.location = game.playerCastle.location
 		game.player.health = game.player.maxHealth
 	}
-}
-
-func isEndState(game game) bool {
-	if game.playerCastle.health <= 0 {
-		return true
-	}
-
-	if game.enemyCastle.health <= 0 {
-		return true
-	}
-
-	return false
 }
 
 func update(game *game, screen tcell.Screen, isTick bool) {
