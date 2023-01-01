@@ -76,8 +76,7 @@ func renderMap(game game, screen tcell.Screen) {
 	screen.Sync()
 }
 
-func processEntities(game *game) {
-	// Targeting
+func updateEntityTargets(game *game) {
 	// player castle needs to check if there are any units to target
 	if game.playerCastle.target == nil {
 		game.playerCastle.target = game.playerCastle.findTarget(game.enemyUnits)
@@ -104,6 +103,37 @@ func processEntities(game *game) {
 	if game.player.target == nil || !game.player.isNearby(game.player.target) {
 		game.player.target = game.player.findTarget(append(game.enemyUnits, &game.enemyCastle))
 	}
+}
+
+func updateDamage(game *game) {
+	// Hit target
+	for i := range game.enemyUnits {
+		if game.enemyUnits[i].target != nil {
+			game.enemyUnits[i].target.health -= 1
+			if game.enemyUnits[i].target.health <= 0 {
+				game.enemyUnits[i].target = nil
+			}
+		}
+	}
+
+	// Hit target
+	for i := range game.playerUnits {
+		if game.playerUnits[i].target != nil {
+			game.playerUnits[i].target.health -= 1
+			if game.playerUnits[i].target.health <= 0 {
+				game.playerUnits[i].target = nil
+			}
+		}
+	}
+
+	if game.player.target != nil {
+		game.player.target.health -= 1
+	}
+}
+
+func processEntities(game *game) {
+	// Targeting
+	updateEntityTargets(game)
 
 	// Move units
 	for i := range game.enemyUnits {
@@ -133,29 +163,7 @@ func processEntities(game *game) {
 	log.Println("Player units:", len(game.playerUnits))
 	log.Println("Enemy units:", len(game.enemyUnits))
 
-	// Hit target
-	for i := range game.enemyUnits {
-		if game.enemyUnits[i].target != nil {
-			game.enemyUnits[i].target.health -= 1
-			if game.enemyUnits[i].target.health <= 0 {
-				game.enemyUnits[i].target = nil
-			}
-		}
-	}
-
-	// Hit target
-	for i := range game.playerUnits {
-		if game.playerUnits[i].target != nil {
-			game.playerUnits[i].target.health -= 1
-			if game.playerUnits[i].target.health <= 0 {
-				game.playerUnits[i].target = nil
-			}
-		}
-	}
-
-	if game.player.target != nil {
-		game.player.target.health -= 1
-	}
+	updateDamage(game)
 
 	// Check if any of the player units are dead
 	for i := len(game.playerUnits) - 1; i >= 0; i-- {
