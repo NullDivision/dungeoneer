@@ -36,10 +36,10 @@ func exit(screen tcell.Screen) {
 func renderMap(game game, screen tcell.Screen) {
 	header := fmt.Sprintf(
 		"P:%d E:%d P$: %d E$: %d",
-		len(game.playerUnits),
-		len(game.enemyUnits),
-		game.playerMoney,
-		game.enemyMoney,
+		len(game.player.units),
+		len(game.enemy.units),
+		game.player.money,
+		game.enemy.money,
 	)
 
 	for i := range header {
@@ -51,20 +51,20 @@ func renderMap(game game, screen tcell.Screen) {
 		for j := range game.mapMatrix[i] {
 			entityChar := mapChar
 
-			if i == game.enemyCastle.y && j == game.enemyCastle.x {
+			if i == game.enemy.castle.y && j == game.enemy.castle.x {
 				entityChar = castleChar
-			} else if i == game.playerCastle.y && j == game.playerCastle.x {
+			} else if i == game.player.castle.y && j == game.player.castle.x {
 				entityChar = castleChar
-			} else if i == game.player.y && j == game.player.x {
+			} else if i == game.playerAvatar.y && j == game.playerAvatar.x {
 				entityChar = playerChar
 			} else {
-				for k := range game.enemyUnits {
-					if i == game.enemyUnits[k].y && j == game.enemyUnits[k].x {
+				for k := range game.enemy.units {
+					if i == game.enemy.units[k].y && j == game.enemy.units[k].x {
 						entityChar = unitChar
 					}
 				}
-				for k := range game.playerUnits {
-					if i == game.playerUnits[k].y && j == game.playerUnits[k].x {
+				for k := range game.player.units {
+					if i == game.player.units[k].y && j == game.player.units[k].x {
 						entityChar = unitChar
 					}
 				}
@@ -78,56 +78,56 @@ func renderMap(game game, screen tcell.Screen) {
 
 func updateEntityTargets(game *game) {
 	// player castle needs to check if there are any units to target
-	if game.playerCastle.target == nil {
-		game.playerCastle.target = game.playerCastle.findTarget(game.enemyUnits)
+	if game.player.castle.target == nil {
+		game.player.castle.target = game.player.castle.findTarget(game.enemy.units)
 	}
 	// enemy castle needs to check if there are any units to target
-	if game.enemyCastle.target == nil {
+	if game.enemy.castle.target == nil {
 		// Include the player in targeting
-		game.enemyCastle.target = game.enemyCastle.findTarget(append(game.playerUnits, game.player))
+		game.enemy.castle.target = game.enemy.castle.findTarget(append(game.player.units, game.playerAvatar))
 	}
 	// Check if any of the player units are next to enemy units
-	for i := range game.playerUnits {
-		if game.playerUnits[i].target == nil {
-			game.playerUnits[i].target = game.playerUnits[i].findTarget(game.enemyUnits)
+	for i := range game.player.units {
+		if game.player.units[i].target == nil {
+			game.player.units[i].target = game.player.units[i].findTarget(game.enemy.units)
 		}
 	}
 	// Check if any of the player units are next to enemy units
-	for i := range game.enemyUnits {
-		if game.enemyUnits[i].target == nil {
+	for i := range game.enemy.units {
+		if game.enemy.units[i].target == nil {
 			// Include the player in targeting
-			game.enemyUnits[i].target = game.enemyUnits[i].findTarget(append(game.playerUnits, game.player))
+			game.enemy.units[i].target = game.enemy.units[i].findTarget(append(game.player.units, game.playerAvatar))
 		}
 	}
 	// If player has a target, check if it's still next to them and if so, hit it
-	if game.player.target == nil || !game.player.isNearby(game.player.target) {
-		game.player.target = game.player.findTarget(append(game.enemyUnits, &game.enemyCastle))
+	if game.playerAvatar.target == nil || !game.playerAvatar.isNearby(game.playerAvatar.target) {
+		game.playerAvatar.target = game.playerAvatar.findTarget(append(game.enemy.units, &game.enemy.castle))
 	}
 }
 
 func updateDamage(game *game) {
 	// Hit target
-	for i := range game.enemyUnits {
-		if game.enemyUnits[i].target != nil {
-			game.enemyUnits[i].target.health -= 1
-			if game.enemyUnits[i].target.health <= 0 {
-				game.enemyUnits[i].target = nil
+	for i := range game.enemy.units {
+		if game.enemy.units[i].target != nil {
+			game.enemy.units[i].target.health -= 1
+			if game.enemy.units[i].target.health <= 0 {
+				game.enemy.units[i].target = nil
 			}
 		}
 	}
 
 	// Hit target
-	for i := range game.playerUnits {
-		if game.playerUnits[i].target != nil {
-			game.playerUnits[i].target.health -= 1
-			if game.playerUnits[i].target.health <= 0 {
-				game.playerUnits[i].target = nil
+	for i := range game.player.units {
+		if game.player.units[i].target != nil {
+			game.player.units[i].target.health -= 1
+			if game.player.units[i].target.health <= 0 {
+				game.player.units[i].target = nil
 			}
 		}
 	}
 
-	if game.player.target != nil {
-		game.player.target.health -= 1
+	if game.playerAvatar.target != nil {
+		game.playerAvatar.target.health -= 1
 	}
 }
 
@@ -136,56 +136,56 @@ func processEntities(game *game) {
 	updateEntityTargets(game)
 
 	// Move units
-	for i := range game.enemyUnits {
-		log.Println("Enemy unit:", i, "target:", game.enemyUnits[i].target)
-		if game.enemyUnits[i].target != nil {
+	for i := range game.enemy.units {
+		log.Println("Enemy unit:", i, "target:", game.enemy.units[i].target)
+		if game.enemy.units[i].target != nil {
 			continue
 		}
 
-		if game.enemyUnits[i].x >= game.enemyUnits[i].y {
-			game.enemyUnits[i].x--
+		if game.enemy.units[i].x >= game.enemy.units[i].y {
+			game.enemy.units[i].x--
 		} else {
-			game.enemyUnits[i].y--
+			game.enemy.units[i].y--
 		}
 	}
-	for i := range game.playerUnits {
-		if game.playerUnits[i].target != nil {
+	for i := range game.player.units {
+		if game.player.units[i].target != nil {
 			continue
 		}
 
-		if game.playerUnits[i].x <= game.playerUnits[i].y || game.playerUnits[i].y == game.enemyCastle.y {
-			game.playerUnits[i].x++
+		if game.player.units[i].x <= game.player.units[i].y || game.player.units[i].y == game.enemy.castle.y {
+			game.player.units[i].x++
 		} else {
-			game.playerUnits[i].y++
+			game.player.units[i].y++
 		}
 	}
 
-	log.Println("Player units:", len(game.playerUnits))
-	log.Println("Enemy units:", len(game.enemyUnits))
+	log.Println("Player units:", len(game.player.units))
+	log.Println("Enemy units:", len(game.enemy.units))
 
 	updateDamage(game)
 
 	// Check if any of the player units are dead
-	for i := len(game.playerUnits) - 1; i >= 0; i-- {
-		if game.playerUnits[i].health <= 0 {
-			game.enemyMoney++
-			game.playerUnits = append(game.playerUnits[:i], game.playerUnits[i+1:]...)
+	for i := len(game.player.units) - 1; i >= 0; i-- {
+		if game.player.units[i].health <= 0 {
+			game.enemy.money++
+			game.player.units = append(game.player.units[:i], game.player.units[i+1:]...)
 		}
 	}
 
 	// Check if any of the enemy units are dead
-	for i := len(game.enemyUnits) - 1; i >= 0; i-- {
-		if game.enemyUnits[i].health <= 0 {
-			game.playerMoney++
-			game.enemyUnits = append(game.enemyUnits[:i], game.enemyUnits[i+1:]...)
+	for i := len(game.enemy.units) - 1; i >= 0; i-- {
+		if game.enemy.units[i].health <= 0 {
+			game.player.money++
+			game.enemy.units = append(game.enemy.units[:i], game.enemy.units[i+1:]...)
 		}
 	}
 
 	// If player dies, move them back to the castle and reset their health
-	if game.player.health <= 0 {
-		game.enemyMoney += 5
-		game.player.location = game.playerCastle.location
-		game.player.health = game.player.maxHealth
+	if game.playerAvatar.health <= 0 {
+		game.enemy.money += 5
+		game.playerAvatar.location = game.player.castle.location
+		game.playerAvatar.health = game.playerAvatar.maxHealth
 	}
 }
 
@@ -203,17 +203,6 @@ func update(game *game, screen tcell.Screen, isTick bool) {
 	renderMap(*game, screen)
 }
 
-func spawnUnits(game *game) {
-	game.enemyUnits = append(
-		game.enemyUnits,
-		&entity{health: 1, location: game.enemyCastle.location, maxHealth: 1},
-	)
-	game.playerUnits = append(
-		game.playerUnits,
-		&entity{health: 1, location: game.playerCastle.location, maxHealth: 1},
-	)
-}
-
 func run(keyChannel chan playerKey, screen tcell.Screen) {
 	width, height := getWindowSize(screen)
 	game := makeNewGame(width, height)
@@ -228,13 +217,13 @@ func run(keyChannel chan playerKey, screen tcell.Screen) {
 			case KeyEscape:
 				exit(screen)
 			case KeyUp:
-				game.player.y--
+				game.playerAvatar.y--
 			case KeyDown:
-				game.player.y++
+				game.playerAvatar.y++
 			case KeyLeft:
-				game.player.x--
+				game.playerAvatar.x--
 			case KeyRight:
-				game.player.x++
+				game.playerAvatar.x++
 			case KeyPause:
 				showMessage(screen, "Game paused")
 				game.paused = true
@@ -254,7 +243,7 @@ func run(keyChannel chan playerKey, screen tcell.Screen) {
 			log.Println("Tick", tick)
 
 			if tick.Second()%5 == 0 {
-				spawnUnits(&game)
+				game.spawnUnits()
 			}
 
 			update(&game, screen, true)

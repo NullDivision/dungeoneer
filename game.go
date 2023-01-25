@@ -1,23 +1,36 @@
 package main
 
+type player struct {
+	castle entity
+	money  int
+	units  []*entity
+}
+
 type game struct {
-	enemyCastle  entity
-	enemyMoney   int
-	enemyUnits   []*entity
+	enemy        *player
 	paused       bool
-	player       *entity
-	playerCastle entity
-	playerMoney  int
-	playerUnits  []*entity
+	player       *player
+	playerAvatar *entity
 	mapMatrix    [][]int
 }
 
+func (g *game) spawnUnits() {
+	g.enemy.units = append(
+		g.enemy.units,
+		&entity{health: 1, location: g.enemy.castle.location, maxHealth: 1},
+	)
+	g.player.units = append(
+		g.player.units,
+		&entity{health: 1, location: g.player.castle.location, maxHealth: 1},
+	)
+}
+
 func isEndState(game game) bool {
-	if game.playerCastle.health <= 0 {
+	if game.player.castle.health <= 0 {
 		return true
 	}
 
-	if game.enemyCastle.health <= 0 {
+	if game.enemy.castle.health <= 0 {
 		return true
 	}
 
@@ -37,9 +50,9 @@ func makeNewGame(width, height int) game {
 	}
 
 	return game{
-		enemyCastle:  enemyCastle,
-		player:       &entity{health: 2, maxHealth: 2},
-		playerCastle: playerCastle,
+		enemy:        &player{castle: enemyCastle},
+		player:       &player{castle: playerCastle},
+		playerAvatar: &entity{health: 2, maxHealth: 2},
 		mapMatrix:    mapMatrix,
 	}
 }
